@@ -52,6 +52,40 @@ plt.rcParams['figure.dpi'] = 300
 plt.rcParams['savefig.dpi'] = 300
 pd.set_option('display.max_columns',29)
 
+# MySQL connection ----------------------------------------------------------------------------------------------------------------------------
+# insert MySQL Database information here
+import mysql.connector as mysql
+from tabulate import tabulate
+
+HOST = "127.0.0.1"
+DATABASE = "infosys722"
+USER = "root"
+PASSWORD = "123456"
+
+# connect to the database
+db_connection = mysql.connect(host=HOST, database=DATABASE, user=USER, password=PASSWORD)
+# get server information
+print(db_connection.get_server_info())
+
+# get the db cursor
+cursor = db_connection.cursor()
+# get database information
+cursor.execute("select database();")
+database_name = cursor.fetchone()
+print("[+] You are connected to the database:", database_name)
+
+# fetch the database
+cursor.execute("select * from general_data")
+# get all selected rows
+rows = cursor.fetchall()
+# print all rows in a tabular format
+print(tabulate(rows, headers=cursor.column_names))
+
+# close the cursor
+cursor.close()
+# close the DB connection
+db_connection.close()
+
 # Data Import ------------------------------------------------------------------------------------------------------------------------------------
 
 # Data load
