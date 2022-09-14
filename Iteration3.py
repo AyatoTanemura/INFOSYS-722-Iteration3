@@ -52,6 +52,8 @@ plt.rcParams['figure.dpi'] = 300
 plt.rcParams['savefig.dpi'] = 300
 pd.set_option('display.max_columns',29)
 
+# Data Import ------------------------------------------------------------------------------------------------------------------------------------
+
 # Data load
 df = pd.read_csv("Data/general_data.csv")
 
@@ -63,6 +65,8 @@ print("Shape of the dataset:",df.shape,'\n')
 print("Total number of rows (excluding column name):",df.shape[0],'\n')
 print("Total number of column:",df.shape[1],'\n')
 print("Columns name: ", df.columns)
+
+# Data Quality ---------------------------------------------------------------------------------------------------------------------------------
 
 # Nu8ll values, Data Type handling and checking zeros
 print(df.info(),"\n\n")
@@ -87,6 +91,8 @@ df.dtypes
 # Cheking Zeros
 for i in df.columns:
     print(i,len(df[df[i] == 0]))
+    
+# Data Exploration -----------------------------------------------------------------------------------------------------------------------------
     
 # Data Explorations
 print(sorted(df.Age.unique()),"\n")
@@ -285,6 +291,8 @@ ax[1].set_xlabel('Age', fontsize=25)
 ax[1].set_ylabel('Age_count', fontsize=25)
 plt.legend()
 
+# Data Preparation & Transformation ----------------------------------------------------------------------------------------------------------------------------
+
 # Lable Encoding
 
 df.head()
@@ -419,6 +427,8 @@ print(len(x_res))
 scaler = StandardScaler()
 features = scaler.fit_transform(x_res)
 features
+
+# Logical Test Design
 
 # Splitting the data into train and test data
 x_train, x_test, y_train, y_test = train_test_split(features, y_res, test_size=0.3, random_state=1) 
