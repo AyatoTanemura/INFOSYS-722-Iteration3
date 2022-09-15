@@ -60,7 +60,7 @@ from tabulate import tabulate
 HOST = "127.0.0.1"
 DATABASE = "infosys722"
 USER = "root"
-PASSWORD = "123456"
+PASSWORD = "------"
 
 # connect to the database
 db_connection = mysql.connect(host=HOST, database=DATABASE, user=USER, password=PASSWORD)
