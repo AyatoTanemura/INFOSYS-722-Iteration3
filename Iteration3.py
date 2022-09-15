@@ -86,6 +86,9 @@ cursor.close()
 # close the DB connection
 db_connection.close()
 
+# create dataframe from MySQL database
+# https://medium.com/analytics-vidhya/importing-data-from-a-mysql-database-into-pandas-data-frame-a06e392d27d7
+
 # Data Import ------------------------------------------------------------------------------------------------------------------------------------
 
 # Data load
