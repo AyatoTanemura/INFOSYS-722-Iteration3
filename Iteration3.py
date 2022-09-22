@@ -60,31 +60,17 @@ from tabulate import tabulate
 HOST = "127.0.0.1"
 DATABASE = "infosys722"
 USER = "root"
-PASSWORD = "------"
+PASSWORD = "123456"
 
-# connect to the database
-db_connection = mysql.connect(host=HOST, database=DATABASE, user=USER, password=PASSWORD)
-# get server information
-print(db_connection.get_server_info())
-
-# get the db cursor
-cursor = db_connection.cursor()
-# get database information
-cursor.execute("select database();")
-database_name = cursor.fetchone()
-print("[+] You are connected to the database:", database_name)
-
-# fetch the database
-cursor.execute("select * from general_data")
-# get all selected rows
-rows = cursor.fetchall()
-# print all rows in a tabular format
-print(tabulate(rows, headers=cursor.column_names))
-
-# close the cursor
-cursor.close()
-# close the DB connection
-db_connection.close()
+try:
+    mydb = mysql.connect(host=HOST, database = DATABASE ,user=USER, 
+                              passwd=PASSWORD,use_pure=True)
+    query = "Select * from general_data;"
+    df_sql = pd.read_sql(query,mydb)
+    mydb.close() #close the connection
+except Exception as e:
+    mydb.close()
+    print(str(e))
 
 # create dataframe from MySQL database
 # https://medium.com/analytics-vidhya/importing-data-from-a-mysql-database-into-pandas-data-frame-a06e392d27d7
@@ -93,6 +79,7 @@ db_connection.close()
 
 # Data load
 df = pd.read_csv("Data/general_data.csv")
+df.shape
 
 # Data check
 df.head()
@@ -103,6 +90,52 @@ print("Total number of rows (excluding column name):",df.shape[0],'\n')
 print("Total number of column:",df.shape[1],'\n')
 print("Columns name: ", df.columns)
 
+# Data Integration
+# splitting dataframe by row index
+from sqlalchemy import create_engine
+df_integ1 = df[['EmployeeID', 'Age', 'Attrition', 'BusinessTravel', 'Department',
+       'DistanceFromHome', 'Education', 'EducationField', 'EmployeeCount',
+       'Gender', 'JobLevel', 'JobRole', 'MaritalStatus', 'MonthlyIncome',
+       'NumCompaniesWorked', 'Over18', 'PercentSalaryHike', 'StandardHours',
+       'StockOptionLevel']].copy()
+
+df_integ2 = df[['EmployeeID', 'TotalWorkingYears', 'TrainingTimesLastYear',
+       'YearsAtCompany', 'YearsSinceLastPromotion', 'YearsWithCurrManager',
+       'EnvironmentSatisfaction', 'JobSatisfaction', 'WorkLifeBalance',
+       'JobInvolvement', 'PerformanceRating']].copy()
+
+hostname = "127.0.0.1"
+dbname = "infosys722"
+uname = "root"
+pwd = "123456"
+
+# Create SQLAlchemy engine to connect to MySQL Database
+engine = create_engine("mysql+pymysql://{user}:{pw}@{host}/{db}"
+				.format(host=hostname, db=dbname, user=uname, pw=pwd))
+
+# Convert dataframe to sql table                                   
+df_integ1.to_sql('df_integ1', engine, index=False)
+# Convert dataframe to sql table                                   
+df_integ2.to_sql('df_integ2', engine, index=False)
+
+engine.dispose()
+
+# Join two table in python using Mysql
+try:
+    mydb = mysql.connect(host=hostname, database = dbname ,user=uname, 
+                              passwd=pwd,use_pure=True)
+    query = "Select * from df_integ1 Join df_integ2 on df_integ1.EmployeeID = df_integ2.EmployeeID;"
+    result_dataFrame = pd.read_sql(query,mydb)
+    mydb.close() #close the connection
+except Exception as e:
+    mydb.close()
+    print(str(e))
+    
+result_dataFrame.head()
+result_dataFrame.shape
+result_dataFrame.columns
+
+    
 # Data Quality ---------------------------------------------------------------------------------------------------------------------------------
 
 # Nu8ll values, Data Type handling and checking zeros
@@ -128,6 +161,19 @@ df.dtypes
 # Cheking Zeros
 for i in df.columns:
     print(i,len(df[df[i] == 0]))
+    
+# Outliers
+q_50 = df.TotalWorkingYears.quantile(0.5)
+q_50
+
+q = df.TotalWorkingYears.quantile(0.95)
+
+df_NoOut1 = df.query('TotalWorkingYears < @q')
+df_NoOut1.shape
+
+q_age = df_NoOut1.Age.quantile(0.95)
+df_NoOut2 = df_NoOut1.query('Age < @q_age')
+df_NoOut2.shape
     
 # Data Exploration -----------------------------------------------------------------------------------------------------------------------------
     
@@ -220,6 +266,7 @@ prd_gender=pd.crosstab(df['Attrition'],df['Gender'])
 ax=prd_gender.plot(kind='bar')
 plt.xticks(rotation=0)
 plt.title("Gender and Attrition")
+plt.show()
 
 ## Ratio of Attrition based on Job satisfaction Level
 df1 = df.groupby(['Attrition','JobSatisfaction']).agg({'JobSatisfaction':'count'})
@@ -334,7 +381,8 @@ plt.legend()
 
 df.head()
 
-col = ['Attrition', 'BusinessTravel', 'Department', 'EducationField', 'Gender', 'JobRole', 'MaritalStatus']
+col = ['Attrition', 'BusinessTravel', 'Department', 
+       'EducationField', 'Gender', 'JobRole', 'MaritalStatus']
 encoder = LabelEncoder()
 for col in df.columns:
     df[col] = encoder.fit_transform(df[col])
@@ -452,6 +500,9 @@ y = df.Attrition
 
 print(len(y[y==0]), len(y[y==1]))
 
+
+
+# Data Projection ----------------------------------------------------------------------------------------------------------------------------
 # Handling Imbalanced data
 os =  RandomOverSampler(sampling_strategy=1)
 
@@ -465,7 +516,7 @@ scaler = StandardScaler()
 features = scaler.fit_transform(x_res)
 features
 
-# Logical Test Design
+# Logical Test Design------------------------------------------------------------------------------------------------------------------------
 
 # Splitting the data into train and test data
 x_train, x_test, y_train, y_test = train_test_split(features, y_res, test_size=0.3, random_state=1) 
@@ -474,14 +525,281 @@ y_train
 x_test
 y_test
 
+# XGBoost Modeling -------------------------------------------------------------------------------------------------------------------------------------
+# XGBoost
+## GridSearchCV - Hyperparameter tuning
+def xgb_grid_search(X, y):
+    # Create a dictionary of all values we want to test
+    param_grid = {
+ "learning_rate"    : [0.05, 0.10, 0.15, 0.20, 0.25, 0.30 ] ,
+ "max_depth"        : [ 3, 4, 5, 6, 8, 10, 12, 15],
+ "min_child_weight" : [ 1, 3, 5, 7 ],
+ "gamma"            : [ 0.0, 0.1, 0.2 , 0.3, 0.4 ],
+ "colsample_bytree" : [ 0.3, 0.4, 0.5 , 0.7 ]
+    
+}
+    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=3, random_state=1)
+    
+    xgb = XGBClassifier()
+    
+    #use gridsearch to test all values
+    xgb_gscv =  RandomizedSearchCV(estimator = xgb,
+                           param_distributions = param_grid,
+                           scoring = 'accuracy',
+                           cv = cv,
+                           n_jobs = -1)
+    #fit model to data
+    xgb_gscv.fit(X, y)
+    
+    return xgb_gscv.best_params_
+
+xgb_grid_search(x_train, y_train)
+
+xgb = XGBClassifier(min_child_weight=3, max_depth=10, learning_rate=0.15, gamma=0.4, 
+                    colsample_bytree=0.5)
+xgb.fit(x_train,y_train)
+
+y_pred_xgb = xgb.predict(x_test)
+
+print(classification_report(y_test, y_pred_xgb))
+
+print("Accuracy:",metrics.accuracy_score(y_test, y_pred_xgb))
+print("Precision:",metrics.precision_score(y_test, y_pred_xgb))
+print("Recall:",metrics.recall_score(y_test, y_pred_xgb))
+
+print(xgb.score(x_train,y_train))
+print(xgb.score(x_test,y_test))
+
+xgb_tacc = xgb.score(x_test,y_test)
+
+# Confusion Matrix of XGBoost
+
+cm = metrics.confusion_matrix(y_test, y_pred_xgb, labels=[1,0])
+
+df_cm = pd.DataFrame(cm, index = [i for i in ["1","0"]],
+                         columns = [i for i in ["Predict 1", "Predict 0"]])
+plt.figure(figsize = (7,5))
+sns.heatmap(df_cm, annot=True, fmt='g')
+
+# AUC of XGBoost
+y_pred_proba = xgb.predict_proba(x_test)[::,1]
+fpr, tpr, _ = metrics.roc_curve(y_test, y_pred_proba)
+fpr 
+tpr
+
+auc = metrics.roc_auc_score(y_test, y_pred_proba)
+auc
+
+plt.plot(fpr,tpr,label="data 1, auc="+str(auc))
+plt.legend(loc=4)
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic')
+plt.legend(loc="lower right")
+plt.show()
+
+xgb_auc = auc
+
+# Features importance in making predictions by XGBoost Model
+pd.Series(xgb.feature_importances_, index=x.columns).nlargest(20)
+
+feat_importances = pd.Series(xgb.feature_importances_, index=x.columns)
+feat_importances = feat_importances.nlargest(20)
+feat_importances.plot(kind='barh')
+
+x.columns
+
+cat2 = ["JobRole", "NumCompaniesWorked", "PercentSalaryHike", "YearsAtCompany", 
+        "YearsSinceLastPromotion", "YearsWithCurrManager", "EnvironmentSatisfaction", 
+        "JobSatisfaction", "WorkLifeBalance"]
+
+f_p_values = chi2(df[cat2],df["MaritalStatus"])
+
+p_values = pd.Series(f_p_values[1])
+p_values.index = cat2
+p_values.sort_values(ascending=False)
+
+# Null Hypothesis: The null hypothesis states that there is no relationship between the two variables
+cnt = 0
+for i in p_values:
+    if i > 0.05:
+        print("There is no relationship", p_values.index[cnt], i)
+    else:
+        print("There is relationship", p_values.index[cnt], i)
+    
+    cnt += 1
+    
+# MaritalStatus vs Attrition
+plt.figure(figsize=(10,10))
+prd_maritalstatus=pd.crosstab(df['Attrition'],df['MaritalStatus'])
+
+ax=prd_maritalstatus.plot(kind='bar')
+plt.xticks(rotation=0)
+plt.title("MaritalStatus vs Attrition")
+
+# MaritalStatus vs NumCompaniesWorked
+plt.figure(figsize=(10,10))
+prd_numcompaniesworked=pd.crosstab(df['MaritalStatus'],df['NumCompaniesWorked'])
+
+ax=prd_numcompaniesworked.plot(kind='bar')
+plt.xticks(rotation=0)
+plt.title("MaritalStatus vs NumCompaniesWorked")
+
+# MaritalStatus vs YearsAtCompany
+plt.figure(figsize=(10,10))
+prd_YearsAtCompany=pd.crosstab(df['MaritalStatus'],df['YearsAtCompany'])
+
+ax=prd_YearsAtCompany.plot(kind='bar')
+plt.xticks(rotation=0)
+plt.title("MaritalStatus vs YearsAtCompany")
+
+# MaritalStatus vs YearsSinceLastPromotion
+plt.figure(figsize=(10,10))
+prd_YearsSinceLastPromotion=pd.crosstab(df['MaritalStatus'],df['YearsSinceLastPromotion'])
+
+ax=prd_YearsSinceLastPromotion.plot(kind='bar')
+plt.xticks(rotation=0)
+plt.title("MaritalStatus vs YearsSinceLastPromotion")
+
+# MaritalStatus vs YearsWithCurrManager
+plt.figure(figsize=(10,10))
+prd_YearsWithCurrManager=pd.crosstab(df['MaritalStatus'],df['YearsWithCurrManager'])
+
+ax=prd_YearsWithCurrManager.plot(kind='bar')
+plt.xticks(rotation=0)
+plt.title("MaritalStatus vs YearsWithCurrManager")
 
 
 
+# SVM modeling ---------------------------------------------------------------------------------------
+# SVM
+# GridSearchCV - Hyperparameter tuning
+def svm_grid_search(X, y):
+    #create a dictionary of all values we want to test
+    param_grid = {'C': [0.1,1, 10, 100], 'gamma': [1,0.1,0.01,0.001, 0.4, 0.2, 0.8],
+                  'kernel': ['rbf', 'poly', 'sigmoid']}
+    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=3, random_state=1)
+    
+    svm = SVC()
+    
+    #use gridsearch to test all values
+    svm_gscv = GridSearchCV(estimator = svm,
+                           param_grid = param_grid,
+                           scoring = 'accuracy',
+                           cv = cv,
+                           n_jobs = -1)
+    #fit model to data
+    svm_gscv.fit(X, y)
+    
+    return svm_gscv.best_params_
 
+svm_grid_search(x_train, y_train)
 
+svm = SVC(gamma=1, C=1, kernel='rbf', probability=True)
 
+svm.fit(x_train, y_train)
 
+y_pred_svm = svm.predict(x_test)
 
+print(svm.score(x_train, y_train))
+print(svm.score(x_test, y_test))
+
+# Confusion Matrix of SVM
+print(metrics.classification_report(y_test, y_pred_svm))
+
+svm_tacc = svm.score(x_test, y_test)
+
+cm = metrics.confusion_matrix(y_test, y_pred_svm, labels=[1,0])
+
+df_cm = pd.DataFrame(cm, index = [i for i in ["1","0"]],
+                         columns = [i for i in ["Predict 1", "Predict 0"]])
+plt.figure(figsize = (7,5))
+sns.heatmap(df_cm, annot=True, fmt='g')
+
+# AUC od SVM
+y_pred_proba = svm.predict_proba(x_test)[::,1]
+fpr, tpr, _ = metrics.roc_curve(y_test, y_pred_proba)
+fpr 
+tpr
+
+auc = metrics.roc_auc_score(y_test, y_pred_proba)
+auc
+
+plt.plot(fpr,tpr,label="data 1, auc="+str(auc))
+plt.legend(loc=4)
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic')
+plt.legend(loc="lower right")
+
+svm_auc = auc
+
+# Random Forest Modeling---------------------------------------------------------------------------------
+# Random Forest
+# GridSearchCV - Hyperparameter
+
+def rf_grid_search(X, y):
+    #create a dictionary of all values we want to test
+    param_grid = { 
+    'n_estimators': [5,10,20,40,50,60,70,80,100],
+    'max_features': ['auto', 'sqrt', 'log2'],
+    'max_depth' : [4,5,6,7,8],
+    'criterion' :['gini', 'entropy']
+    }
+    cv = RepeatedStratifiedKFold(n_splits=10, n_repeats=3, random_state=1)
+    
+    # Random Forest model
+    rf = RandomForestClassifier()
+    
+    #use gridsearch to test all values
+    rf_gscv = GridSearchCV(rf, param_grid, cv=cv, n_jobs=-1, scoring='accuracy')
+    #fit model to data
+    rf_gscv.fit(X, y)
+    
+    return rf_gscv.best_params_
+
+rf_grid_search(x_train, y_train)
+
+rf = RandomForestClassifier(n_estimators=100, criterion='gini', max_depth=8, max_features='sqrt')
+rf.fit(x_train,y_train)
+y_pred2 = rf.predict(x_test)
+
+print(classification_report(y_test, y_pred2))
+
+print("Accuracy:",metrics.accuracy_score(y_test, y_pred2))
+print("Precision:",metrics.precision_score(y_test, y_pred2))
+print("Recall:",metrics.recall_score(y_test, y_pred2))
+
+print(rf.score(x_train,y_train))
+print(rf.score(x_test,y_test))
+
+rf_tacc = rf.score(x_test,y_test)
+
+# Confusion Matrix of Random Forest
+cm = metrics.confusion_matrix(y_test, y_pred2, labels=[1,0])
+
+df_cm = pd.DataFrame(cm, index = [i for i in ["1","0"]],
+                         columns = [i for i in ["Predict 1", "Predict 0"]])
+plt.figure(figsize = (7,5))
+sns.heatmap(df_cm, annot=True, fmt='g')
+
+# AUC of Random Forest
+y_pred_proba = rf.predict_proba(x_test)[::,1]
+fpr, tpr, _ = metrics.roc_curve(y_test, y_pred_proba)
+fpr 
+tpr
+
+auc = metrics.roc_auc_score(y_test, y_pred_proba)
+auc
+
+plt.plot(fpr,tpr,label="data 1, auc="+str(auc))
+plt.legend(loc=4)
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver operating characteristic')
+plt.legend(loc="lower right")
+
+rf_auc = auc
 
 
 
